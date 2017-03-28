@@ -18,9 +18,10 @@ import requests
 功能：拉取A股股票数据，保存到mongoDb(可以拉全量数据，也可以拉增量数据)
 '''
 
-def save_all_data(start):
+
+def pull_all_stock_kline(start):
     for fq in ['afq', 'hfq', None]:
-        save_all_data(start, fq)
+        pull_stock_kline(start, fq)
 
 
 
@@ -33,10 +34,14 @@ autype:string
                   复权类型，qfq-前复权 hfq-后复权 None-不复权，默认为qfq
 
 '''
-def save_all_data(start, autype='qfq'):
+
+
+def pull_stock_kline(start, autype):
 
     client = MongoClient("mongodb://localhost:32017/")
-    k_table = client.kdatabase.ktable + "_" + autype
+
+    suffix = autype if autype is not None else 'none'
+    k_table = client.kdatabase["ktable" + "_" + suffix]
 
     start = "2017-02-08" if start is None else start
 
@@ -61,11 +66,20 @@ def save_all_data(start, autype='qfq'):
 
 
 
+
+'''
 #00585
-def get(code):
+
+犯了个错误，照着港股票的页面写的，解析了港股的页面
+A股也类似解析，没时间改了:)
+
+'''
+
+
+def pull_dividends(code):
 
     client = MongoClient("mongodb://localhost:32017/")
-    k_table = client.kdatabase.ktable + "_paixi"
+    k_table = client.kdatabase['ktable' + "_dividends"]
 
     url = "http://stock.finance.sina.com.cn/hkstock/dividends/%s.html" % code
 
@@ -77,7 +91,7 @@ def get(code):
 
     rows = tbody.split("</tr>")[1:]
 
-    tb = list()
+
     for row in rows:
         tds = row.split("<td>")[1:]
 
@@ -87,17 +101,22 @@ def get(code):
             values.append(value)
 
 
-        row_data = {'公布日期': values[0],
-                   '年度':     values[1],
-                   '派息事项': values[2],
-                   '派息内容': values[3],
-                   '方式':     values[4],
-                   '除净日':   values[5],
-                   '截止过户日期': values[6],
-                   '派息日期': values[7],
-                   }
+        if len(values) >= 8:
+            row_data = {
+                'code':code,
+                '公布日期': values[0],
+                '年度':     values[1],
+                '派息事项': values[2],
+                '派息内容': values[3],
+                '方式':     values[4],
+                '除净日':   values[5],
+                '截止过户日期': values[6],
+                '派息日期': values[7]
+                       }
 
-        k_table.insert_one(row_data)
+            print(row_data)
+
+            k_table.insert_one(row_data)
 
     # rowTd = map(lambda row: row.split("</td>")[0], rows)
 
@@ -105,17 +124,20 @@ def get(code):
 
 
 
-    return tb
+
 
 
 
 '''
 从mongoDb查询股票数据
 '''
-def get_data(code, start, autype='qfq'):
+def get_kline_by_code(code, start, autype='qfq'):
 
     client = MongoClient("mongodb://localhost:32017/")
-    k_table = client.kdatabase.ktable + "_" + autype
+
+    suffix = autype if autype is not None else 'none'
+    k_table = client.kdatabase["ktable" + "_" + suffix]
+    # k_table = client.kdatabase["ktable" + "_" + autype]
     result = k_table.find({"code": code, "date": {"$gt": datetime.strptime(start, '%Y-%m-%d')}})
 
     seq = []
@@ -127,9 +149,38 @@ def get_data(code, start, autype='qfq'):
     return data
 
 
+def get_dividends_by_code(code):
+    client = MongoClient("mongodb://localhost:32017/")
+    k_table = client.kdatabase.ktable_dividends
+
+    result = k_table.find({"code": code})
+    seq = []
+    for d in result:
+        seq.append(d)
+
+    data = pd.DataFrame(seq, columns=['code',
+            '公布日期',
+            '年度',
+            '派息事项',
+            '派息内容',
+            '方式',
+            '除净日',
+            '截止过户日期',
+            '派息日期'])
+    print(data)
+    return data
+
+
 # test code
 if __name__ == "__main__":
 
-    save_all_data('2017-02-08')
+    pull_all_stock_kline('2017-02-08')
 
-    get_data('399808', '2017-02-15')
+    get_kline_by_code('399808', '2017-02-15')
+
+
+    pull_dividends('00585')
+    get_dividends_by_code('00585')
+
+
+
